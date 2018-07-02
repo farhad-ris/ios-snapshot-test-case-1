@@ -1,14 +1,16 @@
 /*
- *  Copyright (c) 2017-2018, Uber Technologies, Inc.
- *  Copyright (c) 2015-2018, Facebook, Inc.
+ *  Copyright (c) 2015, Facebook, Inc.
+ *  All rights reserved.
  *
- *  This source code is licensed under the MIT license found in the
- *  LICENSE file in the root directory of this source tree.
+ *  This source code is licensed under the BSD-style license found in the
+ *  LICENSE file in the root directory of this source tree. An additional grant
+ *  of patent rights can be found in the PATENTS file in the same directory.
  *
  */
 
 #import <FBSnapshotTestCase/FBSnapshotTestCase.h>
 #import <FBSnapshotTestCase/FBSnapshotTestController.h>
+#import <Availability.h>
 
 @implementation FBSnapshotTestCase
 {
@@ -53,13 +55,13 @@
 
 - (FBSnapshotTestCaseAgnosticOption)agnosticOptions
 {
-    return _snapshotController.agnosticOptions;
+  return _snapshotController.agnosticOptions;
 }
 
 - (void)setAgnosticOptions:(FBSnapshotTestCaseAgnosticOption)agnosticOptions
 {
-    NSAssert1(_snapshotController, @"%s cannot be called before [super setUp]", __FUNCTION__);
-    _snapshotController.agnosticOptions = agnosticOptions;
+  NSAssert1(_snapshotController, @"%s cannot be called before [super setUp]", __FUNCTION__);
+  _snapshotController.agnosticOptions = agnosticOptions;
 }
 
 - (BOOL)usesDrawViewHierarchyInRect
@@ -106,7 +108,7 @@
     for (NSString *suffix in suffixes) {
       NSString *referenceImagesDirectory = [NSString stringWithFormat:@"%@%@", referenceImageDirectory, suffix];
       BOOL referenceImageAvailable = [self referenceImageRecordedInDirectory:referenceImagesDirectory identifier:(identifier) error:&error];
-     
+      
       if (referenceImageAvailable) {
         BOOL comparisonSuccess = [self _compareSnapshotOfViewOrLayer:viewOrLayer referenceImagesDirectory:referenceImagesDirectory identifier:identifier tolerance:tolerance error:&error];
         [errors removeAllObjects];
@@ -122,14 +124,50 @@
     }
   }
   
-  if (!testSuccess) {
+  [self _addAttachmentsWithErrors:errors identifier:identifier ranInRecordMode:self.recordMode];
+  
+  if (self.recordMode) {
+    if (errors.count > 0) {
+      return [NSString stringWithFormat:@"Snapshot comparison failed: %@", errors.firstObject];
+    } else {
+      return @"Test ran in record mode. Reference image is now saved. Disable record mode to perform an actual snapshot comparison!";
+    }
+  } else if (!testSuccess) {
     return [NSString stringWithFormat:@"Snapshot comparison failed: %@", errors.firstObject];
   }
-  if (self.recordMode) {
-    return @"Test ran in record mode. Reference image is now saved. Disable record mode to perform an actual snapshot comparison!";
-  }
-
+  
   return nil;
+}
+
+- (void)_addAttachmentsWithErrors:(NSArray<NSError *> *)errors identifier:(NSString *)identifier ranInRecordMode:(BOOL)ranInRecordMode
+{
+#if defined(__IPHONE_11_0) || defined(__TVOS_11_0)
+  if (ranInRecordMode) {
+    UIImage *image = [_snapshotController referenceImageForSelector:self.invocation.selector identifier:identifier error:nil];
+    if (image) {
+      XCTAttachment *attachment = [XCTAttachment attachmentWithImage:image];
+      attachment.name = @"Reference Image";
+      [self addAttachment:attachment];
+    }
+  } else if (errors.firstObject != nil) {
+    NSError *error = errors.firstObject;
+    if (error.userInfo[FBReferenceImageKey] != nil) {
+      XCTAttachment *attachment = [XCTAttachment attachmentWithImage:error.userInfo[FBReferenceImageKey]];
+      attachment.name = @"Reference Image";
+      [self addAttachment:attachment];
+    }
+    if (error.userInfo[FBCapturedImageKey] != nil) {
+      XCTAttachment *attachment = [XCTAttachment attachmentWithImage:error.userInfo[FBCapturedImageKey]];
+      attachment.name = @"Captured Image";
+      [self addAttachment:attachment];
+    }
+    if (error.userInfo[FBDiffedImageKey] != nil) {
+      XCTAttachment *attachment = [XCTAttachment attachmentWithImage:error.userInfo[FBDiffedImageKey]];
+      attachment.name = @"Diffed Image";
+      [self addAttachment:attachment];
+    }
+  }
+#endif
 }
 
 - (BOOL)compareSnapshotOfLayer:(CALayer *)layer
@@ -162,13 +200,13 @@
                                identifier:(NSString *)identifier
                                     error:(NSError **)errorPtr
 {
-    NSAssert1(_snapshotController, @"%s cannot be called before [super setUp]", __FUNCTION__);
-    _snapshotController.referenceImagesDirectory = referenceImagesDirectory;
-    UIImage *referenceImage = [_snapshotController referenceImageForSelector:self.invocation.selector
-                                                                  identifier:identifier
-                                                                       error:errorPtr];
-
-    return (referenceImage != nil);
+  NSAssert1(_snapshotController, @"%s cannot be called before [super setUp]", __FUNCTION__);
+  _snapshotController.referenceImagesDirectory = referenceImagesDirectory;
+  UIImage *referenceImage = [_snapshotController referenceImageForSelector:self.invocation.selector
+                                                                identifier:identifier
+                                                                     error:errorPtr];
+  
+  return (referenceImage != nil);
 }
 
 - (NSString *)getReferenceImageDirectoryWithDefault:(NSString *)dir
